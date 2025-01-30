@@ -1,84 +1,244 @@
 package ifmt.cba.servico;
 
+import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Service;
-import org.springframework.web.bind.annotation.*;
+import ifmt.cba.dto.EstadoPedidoDTO;
+import ifmt.cba.dto.PedidoDTO;
+import ifmt.cba.negocio.PedidoNegocio;
+import ifmt.cba.persistencia.ClienteDAO;
+import ifmt.cba.persistencia.FabricaEntityManager;
+import ifmt.cba.persistencia.ItemPedidoDAO;
+import ifmt.cba.persistencia.PedidoDAO;
+import ifmt.cba.persistencia.PersistenciaException;
+import ifmt.cba.servico.util.MensagemErro;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.Response.ResponseBuilder;
 
-import ifmt.cba.entity.Pedido;
-import ifmt.cba.repository.PedidoRepository;
-
-@RestController
-@RequestMapping("/api/pedidos")
+@Path("/pedido")
 public class PedidoServico {
 
-  @Autowired
-  private PedidoRepository pedidoRepository;
+  private static PedidoNegocio pedidoNegocio;
 
-  // Listar todos os pedidos
-  @GetMapping
-  public List<Pedido> listarTodos() {
-    return pedidoRepository.findAll();
-  }
-
-  // Buscar pedido por código
-  @GetMapping("/{codigo}")
-  public ResponseEntity<Pedido> buscarPorCodigo(@PathVariable int codigo) {
-    Optional<Pedido> pedido = pedidoRepository.findById(codigo);
-    if (pedido.isPresent()) {
-      return ResponseEntity.ok(pedido.get());
+  static {
+    try {
+      PedidoDAO pedidoDAO = new PedidoDAO(FabricaEntityManager.getEntityManagerProducao());
+      ItemPedidoDAO itemPedidoDAO = new ItemPedidoDAO(FabricaEntityManager.getEntityManagerProducao());
+      ClienteDAO clienteDAO = new ClienteDAO(FabricaEntityManager.getEntityManagerProducao());
+      pedidoNegocio = new PedidoNegocio(pedidoDAO, itemPedidoDAO, clienteDAO);
+    } catch (PersistenciaException e) {
+      e.printStackTrace();
     }
-    return ResponseEntity.notFound().build();
   }
 
-  // Criar um novo pedido
-  @PostMapping
-  public ResponseEntity<Pedido> criar(@RequestBody Pedido pedido) {
-    String validacao = pedido.validar();
-    if (!validacao.isEmpty()) {
-      return ResponseEntity.badRequest().body(null);
+  // Adicionar Pedido
+  @POST
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response adicionar(PedidoDTO pedidoDTO) {
+    ResponseBuilder resposta;
+    try {
+      pedidoNegocio.inserir(pedidoDTO);
+      PedidoDTO pedidoDTOTemp = pedidoNegocio.pesquisaCodigo(pedidoDTO.getCodigo());
+      pedidoDTOTemp.setLink("/pedido/codigo/" + pedidoDTOTemp.getCodigo());
+      resposta = Response.ok();
+      resposta.entity(pedidoDTOTemp);
+    } catch (Exception ex) {
+      resposta = Response.status(400);
+      resposta.entity(new MensagemErro(ex.getMessage()));
     }
-    Pedido novoPedido = pedidoRepository.save(pedido);
-    return ResponseEntity.ok(novoPedido);
+    return resposta.build();
   }
 
-  // Atualizar um pedido existente
-  @PutMapping("/{codigo}")
-  public ResponseEntity<Pedido> atualizar(@PathVariable int codigo, @RequestBody Pedido pedidoAtualizado) {
-    Optional<Pedido> pedidoExistente = pedidoRepository.findById(codigo);
-    if (pedidoExistente.isPresent()) {
-      Pedido pedido = pedidoExistente.get();
-      pedido.setCliente(pedidoAtualizado.getCliente());
-      pedido.setDataPedido(pedidoAtualizado.getDataPedido());
-      pedido.setHoraPedido(pedidoAtualizado.getHoraPedido());
-      pedido.setHoraProducao(pedidoAtualizado.getHoraProducao());
-      pedido.setHoraPronto(pedidoAtualizado.getHoraPronto());
-      pedido.setHoraEntrega(pedidoAtualizado.getHoraEntrega());
-      pedido.setHoraFinalizado(pedidoAtualizado.getHoraFinalizado());
-      pedido.setEstado(pedidoAtualizado.getEstado());
-      pedido.setListaItens(pedidoAtualizado.getListaItens());
+  // Alterar Pedido
+  @PUT
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response alterar(PedidoDTO pedidoDTO) {
+    ResponseBuilder resposta;
+    try {
+      pedidoNegocio.alterar(pedidoDTO);
+      PedidoDTO pedidoDTOTemp = pedidoNegocio.pesquisaCodigo(pedidoDTO.getCodigo());
+      pedidoDTOTemp.setLink("/pedido/codigo/" + pedidoDTOTemp.getCodigo());
+      resposta = Response.ok();
+      resposta.entity(pedidoDTOTemp);
+    } catch (Exception ex) {
+      resposta = Response.status(400);
+      resposta.entity(new MensagemErro(ex.getMessage()));
+    }
+    return resposta.build();
+  }
 
-      String validacao = pedido.validar();
-      if (!validacao.isEmpty()) {
-        return ResponseEntity.badRequest().body(null);
+  // Excluir Pedido
+  @DELETE
+  @Path("/{codigo}")
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response excluir(@PathParam("codigo") int codigo) {
+    ResponseBuilder resposta;
+    try {
+      PedidoDTO pedidoDTO = pedidoNegocio.pesquisaCodigo(codigo);
+      if (pedidoDTO == null) {
+        throw new Exception("Pedido não encontrado");
       }
-
-      Pedido pedidoAtualizadoEntity = pedidoRepository.save(pedido);
-      return ResponseEntity.ok(pedidoAtualizadoEntity);
+      pedidoNegocio.excluir(pedidoDTO);
+      resposta = Response.noContent();
+    } catch (Exception ex) {
+      resposta = Response.status(400);
+      resposta.entity(new MensagemErro(ex.getMessage()));
     }
-    return ResponseEntity.notFound().build();
+    return resposta.build();
   }
 
-  // Excluir um pedido
-  @DeleteMapping("/{codigo}")
-  public ResponseEntity<Void> excluir(@PathVariable int codigo) {
-    if (pedidoRepository.existsById(codigo)) {
-      pedidoRepository.deleteById(codigo);
-      return ResponseEntity.noContent().build();
+  // Buscar Pedido por Código
+  @GET
+  @Path("/codigo/{codigo}")
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response buscarPedidoPorCodigo(@PathParam("codigo") int codigo) {
+    ResponseBuilder resposta;
+    try {
+      PedidoDTO pedidoDTO = pedidoNegocio.pesquisaCodigo(codigo);
+      if (pedidoDTO == null) {
+        throw new Exception("Pedido não encontrado");
+      }
+      pedidoDTO.setLink("/pedido/codigo/" + pedidoDTO.getCodigo());
+      resposta = Response.ok();
+      resposta.entity(pedidoDTO);
+    } catch (Exception ex) {
+      resposta = Response.status(400);
+      resposta.entity(new MensagemErro(ex.getMessage()));
     }
-    return ResponseEntity.notFound().build();
+    return resposta.build();
+  }
+
+  // Buscar Pedido por Data
+  @GET
+  @Path("/data/{dataInicial}/{dataFinal}")
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response buscarPedidoPorData(@PathParam("dataInicial") String dataInicialStr,
+      @PathParam("dataFinal") String dataFinalStr) {
+    ResponseBuilder resposta;
+    try {
+      LocalDate dataInicial = LocalDate.parse(dataInicialStr);
+      LocalDate dataFinal = LocalDate.parse(dataFinalStr);
+      List<PedidoDTO> listaPedidoDTO = pedidoNegocio.pesquisaPorDataProducao(dataInicial, dataFinal);
+      for (PedidoDTO pedidoDTO : listaPedidoDTO) {
+        pedidoDTO.setLink("/pedido/codigo/" + pedidoDTO.getCodigo());
+      }
+      resposta = Response.ok();
+      resposta.entity(listaPedidoDTO);
+    } catch (Exception ex) {
+      resposta = Response.status(400);
+      resposta.entity(new MensagemErro(ex.getMessage()));
+    }
+    return resposta.build();
+  }
+
+  // Buscar Pedido por Estado
+  @GET
+  @Path("/estado/{estado}")
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response buscarPedidoPorEstado(@PathParam("estado") EstadoPedidoDTO estado) {
+    ResponseBuilder resposta;
+    try {
+      List<PedidoDTO> listaPedidoDTO = pedidoNegocio.pesquisaPorEstado(estado);
+      for (PedidoDTO pedidoDTO : listaPedidoDTO) {
+        pedidoDTO.setLink("/pedido/codigo/" + pedidoDTO.getCodigo());
+      }
+      resposta = Response.ok();
+      resposta.entity(listaPedidoDTO);
+    } catch (Exception ex) {
+      resposta = Response.status(400);
+      resposta.entity(new MensagemErro(ex.getMessage()));
+    }
+    return resposta.build();
+  }
+
+  // Mudar estado do pedido para PRODUCAO
+  @POST
+  @Path("/mudarParaProducao")
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response mudarPedidoParaProducao(PedidoDTO pedidoDTO) {
+    ResponseBuilder resposta;
+    try {
+      pedidoNegocio.mudarPedidoParaProducao(pedidoDTO);
+      PedidoDTO pedidoDTOTemp = pedidoNegocio.pesquisaCodigo(pedidoDTO.getCodigo());
+      pedidoDTOTemp.setLink("/pedido/codigo/" + pedidoDTOTemp.getCodigo());
+      resposta = Response.ok();
+      resposta.entity(pedidoDTOTemp);
+    } catch (Exception ex) {
+      resposta = Response.status(400);
+      resposta.entity(new MensagemErro(ex.getMessage()));
+    }
+    return resposta.build();
+  }
+
+  // Mudar estado do pedido para PRONTO
+  @POST
+  @Path("/mudarParaPronto")
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response mudarPedidoParaPronto(PedidoDTO pedidoDTO) {
+    ResponseBuilder resposta;
+    try {
+      pedidoNegocio.mudarPedidoParaPronto(pedidoDTO);
+      PedidoDTO pedidoDTOTemp = pedidoNegocio.pesquisaCodigo(pedidoDTO.getCodigo());
+      pedidoDTOTemp.setLink("/pedido/codigo/" + pedidoDTOTemp.getCodigo());
+      resposta = Response.ok();
+      resposta.entity(pedidoDTOTemp);
+    } catch (Exception ex) {
+      resposta = Response.status(400);
+      resposta.entity(new MensagemErro(ex.getMessage()));
+    }
+    return resposta.build();
+  }
+
+  // Mudar estado do pedido para ENTREGA
+  @POST
+  @Path("/mudarParaEntrega")
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response mudarPedidoParaEntrega(PedidoDTO pedidoDTO) {
+    ResponseBuilder resposta;
+    try {
+      pedidoNegocio.mudarPedidoParaEntrega(pedidoDTO);
+      PedidoDTO pedidoDTOTemp = pedidoNegocio.pesquisaCodigo(pedidoDTO.getCodigo());
+      pedidoDTOTemp.setLink("/pedido/codigo/" + pedidoDTOTemp.getCodigo());
+      resposta = Response.ok();
+      resposta.entity(pedidoDTOTemp);
+    } catch (Exception ex) {
+      resposta = Response.status(400);
+      resposta.entity(new MensagemErro(ex.getMessage()));
+    }
+    return resposta.build();
+  }
+
+  // Mudar estado do pedido para CONCLUIDO
+  @POST
+  @Path("/mudarParaConcluido")
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response mudarPedidoParaConcluido(PedidoDTO pedidoDTO) {
+    ResponseBuilder resposta;
+    try {
+      pedidoNegocio.mudarPedidoParaConcluido(pedidoDTO);
+      PedidoDTO pedidoDTOTemp = pedidoNegocio.pesquisaCodigo(pedidoDTO.getCodigo());
+      pedidoDTOTemp.setLink("/pedido/codigo/" + pedidoDTOTemp.getCodigo());
+      resposta = Response.ok();
+      resposta.entity(pedidoDTOTemp);
+    } catch (Exception ex) {
+      resposta = Response.status(400);
+      resposta.entity(new MensagemErro(ex.getMessage()));
+    }
+    return resposta.build();
   }
 }
