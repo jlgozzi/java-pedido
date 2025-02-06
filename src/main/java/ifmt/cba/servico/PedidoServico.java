@@ -47,11 +47,15 @@ public class PedidoServico {
   public Response adicionar(PedidoDTO pedidoDTO) {
     ResponseBuilder resposta;
     try {
-      pedidoNegocio.inserir(pedidoDTO);
-      PedidoDTO pedidoDTOTemp = pedidoNegocio.pesquisaCodigo(pedidoDTO.getCodigo());
-      pedidoDTOTemp.setLink("/pedido/codigo/" + pedidoDTOTemp.getCodigo());
+      // Insere o pedido e obtém o PedidoDTO criado
+      PedidoDTO pedidoCriado = pedidoNegocio.inserir(pedidoDTO);
+
+      // Define o link do pedido
+      pedidoCriado.setLink("/pedido/codigo/" + pedidoCriado.getCodigo());
+
+      // Retorna o pedido criado
       resposta = Response.ok();
-      resposta.entity(pedidoDTOTemp);
+      resposta.entity(pedidoCriado);
     } catch (Exception ex) {
       resposta = Response.status(400);
       resposta.entity(new MensagemErro(ex.getMessage()));

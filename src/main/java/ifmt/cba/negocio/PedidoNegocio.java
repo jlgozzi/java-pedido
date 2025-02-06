@@ -25,27 +25,37 @@ public class PedidoNegocio {
 	private ItemPedidoDAO itemPedidoDAO;
 	private ClienteDAO clienteDAO;
 
-	public PedidoNegocio(PedidoDAO pedidoDAO,ItemPedidoDAO itemPedidoDAO, ClienteDAO clienteDAO) {
+	public PedidoNegocio(PedidoDAO pedidoDAO, ItemPedidoDAO itemPedidoDAO, ClienteDAO clienteDAO) {
 		this.pedidoDAO = pedidoDAO;
 		this.itemPedidoDAO = itemPedidoDAO;
 		this.clienteDAO = clienteDAO;
 		this.modelMapper = new ModelMapper();
 	}
 
-	public void inserir(PedidoDTO pedidoDTO) throws NegocioException {
-
+	public PedidoDTO inserir(PedidoDTO pedidoDTO) throws NegocioException {
+		// Converte o PedidoDTO para a entidade Pedido
 		Pedido pedido = this.toEntity(pedidoDTO);
 		String mensagemErros = pedido.validar();
 
+		// Valida o pedido
 		if (!mensagemErros.isEmpty()) {
 			throw new NegocioException(mensagemErros);
 		}
 
 		try {
+			// Define o estado inicial do pedido
 			pedido.setEstado(EstadoPedidoDTO.REGISTRADO);
+
+			// Inicia a transação e insere o pedido
 			pedidoDAO.beginTransaction();
 			pedidoDAO.incluir(pedido);
 			pedidoDAO.commitTransaction();
+
+			// Recupera o pedido inserido (com o código gerado)
+			Pedido pedidoInserido = pedidoDAO.buscarPorCodigo(pedido.getCodigo());
+
+			// Converte o pedido inserido de volta para PedidoDTO
+			return this.toDTO(pedidoInserido);
 		} catch (PersistenciaException ex) {
 			pedidoDAO.rollbackTransaction();
 			throw new NegocioException("Erro ao incluir pedido - " + ex.getMessage());
@@ -125,6 +135,7 @@ public class PedidoNegocio {
 	}
 
 	public PedidoDTO pesquisaCodigo(int codigo) throws NegocioException {
+		System.out.println(codigo);
 		try {
 			Pedido pedido = pedidoDAO.buscarPorCodigo(codigo);
 			if (pedido != null) {
@@ -136,7 +147,6 @@ public class PedidoNegocio {
 			throw new NegocioException("Erro ao pesquisar pedido pelo codigo - " + ex.getMessage());
 		}
 	}
-
 
 	public List<PedidoDTO> pesquisaPorDataProducao(LocalDate dataInicial, LocalDate dataFinal) throws NegocioException {
 		try {
@@ -153,7 +163,6 @@ public class PedidoNegocio {
 			throw new NegocioException("Erro ao pesquisar pedido pelo estado - " + ex.getMessage());
 		}
 	}
-
 
 	public List<PedidoDTO> pesquisaPorEstadoEData(EstadoPedidoDTO estado, LocalDate data) throws NegocioException {
 		try {
